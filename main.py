@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from typing import Dict, Any
+from typing import Dict, Any, List
 from agno.agent import Agent
 from agno.models.groq import Groq
 from dotenv import load_dotenv
@@ -210,18 +210,27 @@ class ResultsPreviewerAgent:
 def refine_sql_until_correct(schema_analysis: str, user_query: str, initial_sql: str) -> Dict[str, Any]:
     max_iterations = 3
     current_sql = initial_sql
+    iteration_history = []
     
     for i in range(max_iterations):
         # Get results preview
         previewer = ResultsPreviewerAgent()
         preview_results = previewer.preview_results(schema_analysis, user_query, current_sql)
         
+        # Store this iteration
+        iteration_history.append({
+            "iteration": i + 1,
+            "sql": current_sql,
+            "results": preview_results
+        })
+        
         if preview_results["matches_user_intent"]:
             return {
                 "sql": current_sql,
                 "results": preview_results,
                 "iterations": i + 1,
-                "final": True
+                "final": True,
+                "history": iteration_history
             }
         
         # If there's a suggested improvement, use it
@@ -263,11 +272,19 @@ def refine_sql_until_correct(schema_analysis: str, user_query: str, initial_sql:
     previewer = ResultsPreviewerAgent()
     final_preview = previewer.preview_results(schema_analysis, user_query, current_sql)
     
+    # Add last iteration to history
+    iteration_history.append({
+        "iteration": max_iterations,
+        "sql": current_sql,
+        "results": final_preview
+    })
+    
     return {
         "sql": current_sql,
         "results": final_preview,
         "iterations": max_iterations,
-        "final": False
+        "final": False,
+        "history": iteration_history
     }
 
 # Create sidebar for schema input
@@ -313,45 +330,61 @@ if 'schema_analysis' in st.session_state:
     
     if st.button("Generate SQL"):
         if user_query:
-            with st.spinner("Generating and optimizing SQL..."):
-                # Generate SQL
-                generator = SQLGeneratorAgent()
-                generated_sql = generator.generate_sql(st.session_state.schema_analysis, user_query)
+            # Container for displaying progress
+            progress_container = st.empty()
+            
+            # Step 1: Generate SQL
+            progress_container.info("Step 1/3: Generating initial SQL query...")
+            generator = SQLGeneratorAgent()
+            generated_sql = generator.generate_sql(st.session_state.schema_analysis, user_query)
+            
+            # Display initial SQL
+            st.subheader("Generated SQL")
+            st.code(generated_sql, language="sql")
+            
+            # Step 2: Validate SQL
+            progress_container.info("Step 2/3: Validating SQL query...")
+            validator = SQLValidatorAgent()
+            validation_result = validator.validate_sql(st.session_state.schema_analysis, user_query, generated_sql)
+            
+            # Display validation results
+            st.subheader("Validation Results")
+            if validation_result["is_valid"]:
+                st.success("✅ SQL query is valid!")
+                st.markdown(validation_result["explanation"])
+                valid_sql = generated_sql
+            else:
+                st.error("❌ SQL query has issues:")
+                for issue in validation_result["issues"]:
+                    st.markdown(f"- {issue}")
                 
-                # Validate SQL
-                validator = SQLValidatorAgent()
-                validation_result = validator.validate_sql(st.session_state.schema_analysis, user_query, generated_sql)
-                
-                # Display initial SQL
-                st.subheader("Generated SQL")
-                st.code(generated_sql, language="sql")
-                
-                # Display validation results
-                st.subheader("Validation Results")
-                if validation_result["is_valid"]:
-                    st.success("✅ SQL query is valid!")
-                    st.markdown(validation_result["explanation"])
-                    valid_sql = generated_sql
-                else:
-                    st.error("❌ SQL query has issues:")
-                    for issue in validation_result["issues"]:
-                        st.markdown(f"- {issue}")
-                    
-                    st.markdown("**Suggested Fix:**")
-                    st.code(validation_result["suggested_fix"], language="sql")
-                    st.markdown(validation_result["explanation"])
-                    valid_sql = validation_result["suggested_fix"]
-                
-                # Refine SQL until it matches user intent
-                with st.spinner("Generating expected results and optimizing query..."):
+                st.markdown("**Suggested Fix:**")
+                st.code(validation_result["suggested_fix"], language="sql")
+                st.markdown(validation_result["explanation"])
+                valid_sql = validation_result["suggested_fix"]
+            
+            # Step 3: Generate expected results (always do this step)
+            progress_container.info("Step 3/3: Generating expected query results...")
+            
+            # First try with the direct results preview
+            previewer = ResultsPreviewerAgent()
+            initial_preview = previewer.preview_results(
+                st.session_state.schema_analysis,
+                user_query,
+                valid_sql
+            )
+            
+            # Display expected results header
+            st.subheader("Expected Query Results")
+            
+            # If initial preview doesn't match user intent, refine it
+            if not initial_preview["matches_user_intent"]:
+                with st.spinner("Refining query to better match your intent..."):
                     refinement_result = refine_sql_until_correct(
                         st.session_state.schema_analysis,
                         user_query,
                         valid_sql
                     )
-                
-                # Display expected results
-                st.subheader("Expected Query Results")
                 
                 if refinement_result["iterations"] > 1:
                     st.info(f"Query was refined {refinement_result['iterations']} times to better match your intent.")
@@ -360,28 +393,34 @@ if 'schema_analysis' in st.session_state:
                     st.markdown("**Optimized SQL Query:**")
                     st.code(refinement_result["sql"], language="sql")
                 
-                # Display results as table
+                # Use the results from refinement
                 results = refinement_result["results"]
-                
-                # Create a pandas DataFrame from the results
-                df = pd.DataFrame(results["data"], columns=results["columns"])
-                
-                # Format the DataFrame for display
-                st.dataframe(df)
-                
-                # Show explanation about the results
-                with st.expander("Results Explanation", expanded=True):
-                    st.markdown(f"**Row Count:** {results['row_count']}")
-                    st.markdown(f"**Matches User Intent:** {'✅ Yes' if results['matches_user_intent'] else '❌ No'}")
-                    st.markdown(f"**Explanation:** {results['explanation']}")
-                
-                # Add to history
-                st.session_state.query_history.append({
-                    "user_query": user_query,
-                    "sql": refinement_result["sql"],
-                    "results": results,
-                    "timestamp": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
-                })
+            else:
+                # Use the initial preview results
+                results = initial_preview
+            
+            # Create a pandas DataFrame from the results
+            df = pd.DataFrame(results["data"], columns=results["columns"])
+            
+            # Format the DataFrame for display
+            st.dataframe(df)
+            
+            # Show explanation about the results
+            with st.expander("Results Explanation", expanded=True):
+                st.markdown(f"**Row Count:** {results['row_count']}")
+                st.markdown(f"**Matches User Intent:** {'✅ Yes' if results['matches_user_intent'] else '❌ No'}")
+                st.markdown(f"**Explanation:** {results['explanation']}")
+            
+            # Clear the progress indicator
+            progress_container.empty()
+            
+            # Add to history
+            st.session_state.query_history.append({
+                "user_query": user_query,
+                "sql": valid_sql if results == initial_preview else refinement_result["sql"],
+                "results": results,
+                "timestamp": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
+            })
         else:
             st.error("Please enter a query first.")
 else:
@@ -398,5 +437,8 @@ if st.session_state.query_history:
             
             # Display saved results
             st.markdown("**Results Preview:**")
-            df = pd.DataFrame(query['results']["data"], columns=query['results']["columns"])
-            st.dataframe(df)
+            if 'results' in query and 'data' in query['results'] and 'columns' in query['results']:
+                df = pd.DataFrame(query['results']["data"], columns=query['results']["columns"])
+                st.dataframe(df)
+            else:
+                st.warning("No results preview available for this query.")
