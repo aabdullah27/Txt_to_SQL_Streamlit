@@ -5,6 +5,8 @@ from agno.agent import Agent
 from agno.models.groq import Groq
 from dotenv import load_dotenv
 import os
+import json
+import re
 
 # Load environment variables from .env file
 load_dotenv()
@@ -120,8 +122,6 @@ class SQLValidatorAgent:
         
         # Clean the response to extract just the JSON
         content = response.content
-        import json
-        import re
         
         # Extract JSON from the response if needed
         json_match = re.search(r'{.*}', content, re.DOTALL)
@@ -137,6 +137,138 @@ class SQLValidatorAgent:
                 "suggested_fix": generated_sql,
                 "explanation": "The validator failed to produce a proper response. Please review the SQL manually."
             }
+
+# Create a class for the Results Previewer Agent
+class ResultsPreviewerAgent:
+    def __init__(self):
+        self.agent = Agent(
+            model=Groq(id=groq_model, api_key=groq_api_key),
+            description="You are a database query execution specialist who can accurately predict the results of SQL queries when run against a given schema. You understand data relationships and can generate realistic sample data.",
+            markdown=True
+        )
+    
+    def preview_results(self, schema_analysis: str, user_query: str, sql_query: str) -> Dict[str, Any]:
+        prompt = f"""
+        Given the following database schema analysis:
+        
+        {schema_analysis}
+        
+        And this SQL query that was generated from the user's request:
+        
+        User's request: "{user_query}"
+        
+        SQL query:
+        ```sql
+        {sql_query}
+        ```
+        
+        Please predict what results would be returned if this query was executed against a database with this schema.
+        Generate a realistic sample dataset that would be returned.
+
+        Respond in this exact JSON format:
+        {{
+            "columns": ["column1", "column2", ...],
+            "data": [
+                ["row1col1", "row1col2", ...],
+                ["row2col1", "row2col2", ...],
+                ...
+            ],
+            "row_count": number_of_rows,
+            "matches_user_intent": true/false,
+            "explanation": "Explanation of why these results match or don't match the user's intent",
+            "suggested_improved_query": "Improved SQL query if the current one doesn't match user intent"
+        }}
+        
+        For the data, generate realistic but fictitious sample data that would likely appear in this kind of database.
+        Limit to a reasonable number of sample rows (5-10).
+        
+        Return ONLY the JSON without any additional text.
+        """
+        response = self.agent.run(prompt)
+        
+        # Clean the response to extract just the JSON
+        content = response.content
+        
+        # Extract JSON from the response if needed
+        json_match = re.search(r'{.*}', content, re.DOTALL)
+        if json_match:
+            content = json_match.group(0)
+        
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError:
+            return {
+                "columns": ["Error"],
+                "data": [["Failed to parse results preview"]],
+                "row_count": 1,
+                "matches_user_intent": False,
+                "explanation": "The results previewer failed to produce a proper response. Please review the SQL manually.",
+                "suggested_improved_query": sql_query
+            }
+
+# Function to iteratively improve SQL query until it matches user intent
+def refine_sql_until_correct(schema_analysis: str, user_query: str, initial_sql: str) -> Dict[str, Any]:
+    max_iterations = 3
+    current_sql = initial_sql
+    
+    for i in range(max_iterations):
+        # Get results preview
+        previewer = ResultsPreviewerAgent()
+        preview_results = previewer.preview_results(schema_analysis, user_query, current_sql)
+        
+        if preview_results["matches_user_intent"]:
+            return {
+                "sql": current_sql,
+                "results": preview_results,
+                "iterations": i + 1,
+                "final": True
+            }
+        
+        # If there's a suggested improvement, use it
+        if "suggested_improved_query" in preview_results and preview_results["suggested_improved_query"]:
+            current_sql = preview_results["suggested_improved_query"]
+        else:
+            # If no suggestion, try again with the generator
+            generator = SQLGeneratorAgent()
+            feedback = f"Previous query didn't match user intent. Issues: {preview_results['explanation']}"
+            prompt = f"""
+            Based on the following database schema analysis:
+            
+            {schema_analysis}
+            
+            Convert this natural language query into a proper SQL command:
+            
+            "{user_query}"
+            
+            Previous attempt:
+            ```sql
+            {current_sql}
+            ```
+            
+            Feedback on previous attempt:
+            {feedback}
+            
+            Provide only the improved SQL command without any explanation.
+            """
+            current_sql = generator.agent.run(prompt).content
+        
+        # Validate the new SQL
+        validator = SQLValidatorAgent()
+        validation_result = validator.validate_sql(schema_analysis, user_query, current_sql)
+        
+        if not validation_result["is_valid"]:
+            current_sql = validation_result["suggested_fix"]
+    
+    # If we reached max iterations, return the last attempt
+    previewer = ResultsPreviewerAgent()
+    final_preview = previewer.preview_results(schema_analysis, user_query, current_sql)
+    
+    return {
+        "sql": current_sql,
+        "results": final_preview,
+        "iterations": max_iterations,
+        "final": False
+    }
 
 # Create sidebar for schema input
 with st.sidebar:
@@ -181,7 +313,7 @@ if 'schema_analysis' in st.session_state:
     
     if st.button("Generate SQL"):
         if user_query:
-            with st.spinner("Generating SQL..."):
+            with st.spinner("Generating and optimizing SQL..."):
                 # Generate SQL
                 generator = SQLGeneratorAgent()
                 generated_sql = generator.generate_sql(st.session_state.schema_analysis, user_query)
@@ -190,7 +322,7 @@ if 'schema_analysis' in st.session_state:
                 validator = SQLValidatorAgent()
                 validation_result = validator.validate_sql(st.session_state.schema_analysis, user_query, generated_sql)
                 
-                # Display results
+                # Display initial SQL
                 st.subheader("Generated SQL")
                 st.code(generated_sql, language="sql")
                 
@@ -199,21 +331,55 @@ if 'schema_analysis' in st.session_state:
                 if validation_result["is_valid"]:
                     st.success("✅ SQL query is valid!")
                     st.markdown(validation_result["explanation"])
-                    final_sql = generated_sql
+                    valid_sql = generated_sql
                 else:
                     st.error("❌ SQL query has issues:")
                     for issue in validation_result["issues"]:
                         st.markdown(f"- {issue}")
                     
-                    st.subheader("Suggested Fix")
+                    st.markdown("**Suggested Fix:**")
                     st.code(validation_result["suggested_fix"], language="sql")
                     st.markdown(validation_result["explanation"])
-                    final_sql = validation_result["suggested_fix"]
+                    valid_sql = validation_result["suggested_fix"]
+                
+                # Refine SQL until it matches user intent
+                with st.spinner("Generating expected results and optimizing query..."):
+                    refinement_result = refine_sql_until_correct(
+                        st.session_state.schema_analysis,
+                        user_query,
+                        valid_sql
+                    )
+                
+                # Display expected results
+                st.subheader("Expected Query Results")
+                
+                if refinement_result["iterations"] > 1:
+                    st.info(f"Query was refined {refinement_result['iterations']} times to better match your intent.")
+                
+                if refinement_result["sql"] != valid_sql:
+                    st.markdown("**Optimized SQL Query:**")
+                    st.code(refinement_result["sql"], language="sql")
+                
+                # Display results as table
+                results = refinement_result["results"]
+                
+                # Create a pandas DataFrame from the results
+                df = pd.DataFrame(results["data"], columns=results["columns"])
+                
+                # Format the DataFrame for display
+                st.dataframe(df)
+                
+                # Show explanation about the results
+                with st.expander("Results Explanation", expanded=True):
+                    st.markdown(f"**Row Count:** {results['row_count']}")
+                    st.markdown(f"**Matches User Intent:** {'✅ Yes' if results['matches_user_intent'] else '❌ No'}")
+                    st.markdown(f"**Explanation:** {results['explanation']}")
                 
                 # Add to history
                 st.session_state.query_history.append({
                     "user_query": user_query,
-                    "sql": final_sql,
+                    "sql": refinement_result["sql"],
+                    "results": results,
                     "timestamp": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
                 })
         else:
@@ -229,7 +395,8 @@ if st.session_state.query_history:
             st.markdown(f"**Original Query:** {query['user_query']}")
             st.markdown("**Generated SQL:**")
             st.code(query['sql'], language="sql")
-
-# Footer
-st.markdown("---")
-st.markdown("Built with Streamlit, Groq LLMs, and Agno Agents")
+            
+            # Display saved results
+            st.markdown("**Results Preview:**")
+            df = pd.DataFrame(query['results']["data"], columns=query['results']["columns"])
+            st.dataframe(df)
