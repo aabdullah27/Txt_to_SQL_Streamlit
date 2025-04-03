@@ -1,8 +1,15 @@
 import streamlit as st
 import pandas as pd
-from typing import List, Dict, Any
+from typing import Dict, Any
 from agno.agent import Agent
 from agno.models.groq import Groq
+from dotenv import load_dotenv
+import os
+
+# Load environment variables from .env file
+load_dotenv()
+groq_api_key = os.getenv("GROQ_API_KEY")
+groq_model = "llama-3.3-70b-versatile"
 
 # Set page configuration
 st.set_page_config(
@@ -28,7 +35,7 @@ if 'query_history' not in st.session_state:
 class SchemaAnalyzerAgent:
     def __init__(self):
         self.agent = Agent(
-            model=Groq(id="llama-3.3-70b-versatile"),
+            model=Groq(id=groq_model, api_key=groq_api_key),
             description="You are a database expert who analyzes and understands database schemas. Identify tables, columns, relationships, and data types accurately.",
             markdown=True
         )
@@ -55,7 +62,7 @@ class SchemaAnalyzerAgent:
 class SQLGeneratorAgent:
     def __init__(self):
         self.agent = Agent(
-            model=Groq(id="llama-3.3-70b-versatile"),
+            model=Groq(id=groq_model, api_key=groq_api_key),
             description="You are an SQL expert who converts natural language queries into precise SQL commands based on database schemas.",
             markdown=True
         )
@@ -79,7 +86,7 @@ class SQLGeneratorAgent:
 class SQLValidatorAgent:
     def __init__(self):
         self.agent = Agent(
-            model=Groq(id="llama-3.3-70b-versatile"),
+            model=Groq(id=groq_model, api_key=groq_api_key),
             description="You are a meticulous SQL validator who ensures SQL commands are correct, efficient, and match the user's intent and the database schema.",
             markdown=True
         )

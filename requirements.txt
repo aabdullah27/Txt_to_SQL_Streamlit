@@ -1,2 +1,4 @@
 streamlit
 agno
+groq
+python-dotenv
