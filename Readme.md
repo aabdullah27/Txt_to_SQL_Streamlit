@@ -1,105 +1,151 @@
-# 🔍 SQL Query Generator
+## 🔍 SQL Query Generator - Natural Language to SQL Conversion Tool
 
-Convert natural language into SQL queries with our powerful AI-powered tool.
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://txt-to-sql-app.streamlit.app/)
+![License](https://img.shields.io/badge/license-MIT-green)
 
-**Live Demo:** [https://txt-to-sql-app.streamlit.app/](https://txt-to-sql-app.streamlit.app/)
+Transform natural language into optimized SQL queries with this AI-powered tool. Perfect for database professionals, analysts, and developers who want to query databases without memorizing complex SQL syntax.
 
-## Overview
+## 🌟 Key Features
 
-SQL Query Generator is a Streamlit application that transforms plain English queries into optimized SQL commands based on your database schema. Powered by LLama 3.3 70B (via Groq), this tool helps database users, analysts, and developers quickly generate accurate SQL without needing to remember exact syntax or table relationships.
+- **Natural Language Processing**: Convert plain English questions into SQL queries
+- **Schema-Aware Generation**: Understands your database structure for accurate query generation
+- **Multi-Agent Validation**: Four specialized AI agents ensure query accuracy:
+  - Schema Analyzer
+  - SQL Generator
+  - SQL Validator
+  - Results Previewer
+- **Iterative Refinement**: Automatically improves queries to better match your intent
+- **Results Simulation**: Preview expected results with realistic sample data
+- **Query History**: Track all your previous queries for reference
 
-## Features
-
-- **Natural Language to SQL**: Describe what you want to query in plain English
-- **Schema Analysis**: Upload or paste your database schema for accurate query generation
-- **Query Validation**: Automatically validates generated SQL against your schema
-- **Results Preview**: Shows expected query results with sample data
-- **Query Refinement**: Iteratively improves queries to better match your intent
-- **Query History**: Maintains a record of your previous queries for reference
-
-## How It Works
-
-The application uses a multi-agent system with specialized AI agents:
-
-1. **Schema Analyzer**: Understands your database structure, tables, and relationships
-2. **SQL Generator**: Converts natural language to SQL commands
-3. **SQL Validator**: Ensures queries are correct and follow best practices
-4. **Results Previewer**: Shows expected results with realistic sample data
-
-## Getting Started
+## 🚀 Quick Start
 
 ### Using the Web App
 
-1. Visit [https://txt-to-sql-app.streamlit.app/](https://txt-to-sql-app.streamlit.app/)
+1. Visit the [live demo](https://txt-to-sql-app.streamlit.app/)
 2. Input your database schema (paste or upload)
 3. Click "Analyze Schema"
-4. Enter your query in plain English
+4. Describe your query in plain English
 5. Click "Generate SQL"
 6. Review and use the generated SQL
 
-### Running Locally
+### Local Installation
 
-1. Clone the repository
-2. Install dependencies:
-   ```
-   pip install streamlit pandas agno dotenv
-   ```
-3. Create a `.env` file with your Groq API key:
-   ```
-   GROQ_API_KEY=your_api_key_here
-   ```
-4. Run the application:
-   ```
-   streamlit run app.py
-   ```
+```bash
+# Clone the repository
+git clone https://github.com/aabdullah27/Txt_to_SQL_Streamlit.git
+cd 'TEXT TO SQL'
 
-## Example Usage
+# Create and activate virtual environment (recommended)
+python -m venv venv
+source venv/bin/activate  # Linux/Mac
+venv\Scripts\activate     # Windows
 
-1. **Input Schema**:
-   ```sql
-   CREATE TABLE customers (
-     customer_id INT PRIMARY KEY,
-     name VARCHAR(100),
-     email VARCHAR(100),
-     join_date DATE
-   );
-   
-   CREATE TABLE orders (
-     order_id INT PRIMARY KEY,
-     customer_id INT,
-     order_date DATE,
-     total_amount DECIMAL(10,2),
-     FOREIGN KEY (customer_id) REFERENCES customers(customer_id)
-   );
-   ```
+# Install dependencies
+pip install -r requirements.txt
 
-2. **Natural Language Query**:
-   "Show me all customers who spent more than $500 in total, along with their total order amount"
+# Set up environment variables
+echo "GOOGLE_API_KEY=your_api_key_here" > .env
 
-3. **Generated SQL**:
-   ```sql
-   SELECT c.customer_id, c.name, c.email, SUM(o.total_amount) as total_spent
-   FROM customers c
-   JOIN orders o ON c.customer_id = o.customer_id
-   GROUP BY c.customer_id, c.name, c.email
-   HAVING SUM(o.total_amount) > 500
-   ORDER BY total_spent DESC;
-   ```
+# Run the application
+streamlit run app.py
+```
 
-## Requirements
+## 📚 Comprehensive Documentation
 
-- Streamlit
-- Pandas
-- Agno Agents
-- Groq API access
+### Database Schema Input
+
+The tool accepts database schemas in multiple formats:
+- SQL CREATE TABLE statements
+- Database documentation
+- ER diagrams (textual description)
+- Exported schema files
+
+Example schema:
+```sql
+CREATE TABLE employees (
+  emp_id INT PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  department VARCHAR(50),
+  hire_date DATE,
+  salary DECIMAL(10,2)
+);
+
+CREATE TABLE projects (
+  project_id INT PRIMARY KEY,
+  name VARCHAR(100),
+  start_date DATE,
+  end_date DATE,
+  budget DECIMAL(12,2),
+  manager_id INT REFERENCES employees(emp_id)
+);
+```
+
+### Query Examples
+
+| Natural Language Query | Generated SQL |
+|------------------------|---------------|
+| "Show me all employees in the Sales department earning more than $75,000" | `SELECT * FROM employees WHERE department = 'Sales' AND salary > 75000 ORDER BY salary DESC;` |
+| "Find projects that are over budget" | `SELECT p.* FROM projects p WHERE p.budget < (SELECT SUM(...) FROM ...);` |
+| "List employees who haven't been assigned to any projects" | `SELECT e.* FROM employees e LEFT JOIN project_assignments pa ON e.emp_id = pa.emp_id WHERE pa.emp_id IS NULL;` |
+
+### Advanced Features
+
+1. **Query Refinement**:
+   - The tool automatically detects when generated SQL doesn't match user intent
+   - Iteratively improves queries (up to 3 refinement cycles)
+   - Provides explanations for each refinement
+
+2. **Results Preview**:
+   - Generates realistic sample data based on schema
+   - Shows expected columns and row count
+   - Highlights when results don't match user intent
+
+3. **Schema Analysis**:
+   - Identifies tables, columns, and relationships
+   - Detects primary and foreign keys
+   - Understands data types and constraints
+
+## 🛠 Technical Architecture
+
+```mermaid
+graph TD
+    A[User Input] --> B[Schema Analyzer Agent]
+    A --> C[Natural Language Query]
+    B --> D[Schema Understanding]
+    C --> E[SQL Generator Agent]
+    D --> E
+    E --> F[Generated SQL]
+    F --> G[SQL Validator Agent]
+    G --> H[Validated SQL]
+    H --> I[Results Previewer Agent]
+    I --> J[Expected Results]
+    J --> K[User Feedback]
+    K -->|Refinement Needed| E
+```
+
+## 📦 Dependencies
+
 - Python 3.10+
+- Streamlit (Web Interface)
+- Pandas (Data Handling)
+- Agno Agents (AI Framework)
+- Google Gemini API (LLM Backend)
 
-## Limitations
+## 📝 License
 
-- Currently supports standard SQL syntax
-- Generated queries may need adjustment for specific database dialects (MySQL, PostgreSQL, etc.)
-- Complex queries or specialized database features may require manual refinement
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Feedback and Contributions
+## 🤝 Contributing
 
-We welcome contributions and feedback to improve this tool. Please feel free to submit issues or pull requests.
+We welcome contributions! Please follow these steps:
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+---
+
+**Note**: This tool generates SQL queries based on AI interpretation of your schema and natural language input. Always verify critical queries before executing them on production databases.
