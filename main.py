@@ -11,7 +11,7 @@ import re
 # Load environment variables from .env file
 load_dotenv()
 google_api_key = os.getenv("GOOGLE_API_KEY")
-model = "gemini-2.5-pro-exp-03-25"
+model = "gemini-2.0-flash"
 
 # Set page configuration
 st.set_page_config(
