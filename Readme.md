@@ -5,6 +5,8 @@
 
 Transform natural language into optimized SQL queries with this AI-powered tool. Perfect for database professionals, analysts, and developers who want to query databases without memorizing complex SQL syntax.
 
+## Structure Image
+![Structure](assets/Txt-to-sql-project.PNG)
 ## 🌟 Key Features
 
 - **Natural Language Processing**: Convert plain English questions into SQL queries
