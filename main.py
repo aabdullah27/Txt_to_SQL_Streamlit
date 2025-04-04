@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from typing import Dict, Any, List
 from agno.agent import Agent
-from agno.models.groq import Groq
+from agno.models.google import Gemini
 from dotenv import load_dotenv
 import os
 import json
@@ -10,8 +10,8 @@ import re
 
 # Load environment variables from .env file
 load_dotenv()
-groq_api_key = os.getenv("GROQ_API_KEY")
-groq_model = "llama-3.3-70b-versatile"
+google_api_key = os.getenv("GOOGLE_API_KEY")
+model = "gemini-2.5-pro-exp-03-25"
 
 # Set page configuration
 st.set_page_config(
@@ -37,7 +37,7 @@ if 'query_history' not in st.session_state:
 class SchemaAnalyzerAgent:
     def __init__(self):
         self.agent = Agent(
-            model=Groq(id=groq_model, api_key=groq_api_key),
+            model=Gemini(id=model, api_key=google_api_key),
             description="You are a database expert who analyzes and understands database schemas. Identify tables, columns, relationships, and data types accurately.",
             markdown=True
         )
@@ -64,7 +64,7 @@ class SchemaAnalyzerAgent:
 class SQLGeneratorAgent:
     def __init__(self):
         self.agent = Agent(
-            model=Groq(id=groq_model, api_key=groq_api_key),
+            model=Gemini(id=model, api_key=google_api_key),
             description="You are an SQL expert who converts natural language queries into precise SQL commands based on database schemas.",
             markdown=True
         )
@@ -88,7 +88,7 @@ class SQLGeneratorAgent:
 class SQLValidatorAgent:
     def __init__(self):
         self.agent = Agent(
-            model=Groq(id=groq_model, api_key=groq_api_key),
+            model=Gemini(id=model, api_key=google_api_key),
             description="You are a meticulous SQL validator who ensures SQL commands are correct, efficient, and match the user's intent and the database schema.",
             markdown=True
         )
@@ -142,7 +142,7 @@ class SQLValidatorAgent:
 class ResultsPreviewerAgent:
     def __init__(self):
         self.agent = Agent(
-            model=Groq(id=groq_model, api_key=groq_api_key),
+            model=Gemini(id=model, api_key=google_api_key),
             description="You are a database query execution specialist who can accurately predict the results of SQL queries when run against a given schema. You understand data relationships and can generate realistic sample data.",
             markdown=True
         )
